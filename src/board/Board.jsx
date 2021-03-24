@@ -44,9 +44,15 @@ const Board = () => {
 
   useEffect(() => {
     setInterval(() => {
-      moveSnake();
+      // moveSnake();
     }, 1000)
+    window.addEventListener('keydown', e => { //keydown to register arrow keys on keyboard
+      const newDirection = getDirectionFromKey(e.key);
+      const isValidDirection = newDirection !== ''; //valid direction eg not an empty string
+      if (isValidDirection) setDirection(newDirection);
+    })
   }, []);
+
 
   const moveSnake = () => {
     // const currentHeadCoords = snake.head;
@@ -108,7 +114,8 @@ const Board = () => {
             <div
               key={cellIndex}
               className={`cell ${
-                snakeCells.has(cellValue) ? 'snake-cell' : ''}`}></div> //if snake cells have the cell value that we are at, then we also add the snake cell class making it green
+                snakeCells.has(cellValue) ? 'snake-cell' : ''
+              }`}></div> //if snake cells have the cell value that we are at, then we also add the snake cell class making it green
            ))}
          </div>
       ))}
@@ -128,6 +135,14 @@ const createBoard = (BOARD_SIZE) => { // fills 2D arr with a counter so every ce
   }
   return board;
 };
+
+const getDirectionFromKey = key => {
+  if (key === 'ArrowUp') return Direction.UP;
+  if (key === 'ArrowRight') return Direction.RIGHT;
+  if (key === 'ArrowDown') return Direction.DOWN;
+  if (key === 'ArrowLeft') return Direction.LEFT;
+  return ''; //return an empty string if key is not one of the 4 arrow keys
+}
 
 export default Board;
 //.fill() takes 3 arguments, first to last index you want to fill and third argument is with what you want to fill it

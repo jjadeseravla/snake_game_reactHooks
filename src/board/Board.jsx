@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { randomIntFromInterval } from '../utils.js';
 import './Board.css';
 
 
@@ -36,6 +37,7 @@ const Direction = {
 
 const Board = () => {
   const [board, setBoard] = useState(createBoard(BOARD_SIZE));
+  const [foodCell, setFoodCell] = useState(48);
   const [snakeCells, setSnakeCells] = useState(new Set([44])); // set will hold just nums that are snake body // 44 is value that gets passed to the node cos every snake cell should know where it currently is
   const [snake, setSnake] = useState(new LinkedList(new Cell(4, 3, 44)));
   const [direction, setDirection] = useState(Direction.RIGHT);
@@ -63,12 +65,14 @@ const Board = () => {
 
     const nextHeadCoords = getNextSnakeHeadCoords(currentHeadCoords, direction);
     const nextHeadValue = board[nextHeadCoords.row][nextHeadCoords.col]
+
+    if (nextHeadValue === foodCell) handleFoodConsumption(); //if the next head value would be on the food (red sq same place as green) ---> then we eat food
+
     const newHead = new LinkedListNode(
-      new Cell(nextHeadCoords.row, nextHeadCoords.col, nextHeadValue),
+        new Cell(nextHeadCoords.row, nextHeadCoords.col, nextHeadValue),
     );
 
-    const newSnakeCells = new Set(snakeCellsRef.current);
-    console.log(snakeCellsRef.current);
+    const newSnakeCells = new Set(snakeCells);
     newSnakeCells.delete(snake.tail.value.value);
     newSnakeCells.add(nextHeadValue);
 
@@ -106,6 +110,17 @@ const Board = () => {
     }
   }
 
+  const handleFoodConsumption = () => { //this function just updates where the next food is going to be using the random function
+    const maxPossibleCellValues = BOARD_SIZE * BOARD_SIZE;
+    let nextFoodCell;
+    while (true) {
+      const nextFoodCell = randomIntFromInterval(1, maxPossibleCellValues);
+      if (snakeCells.has(nextFoodCell) || foodCell === nextFoodCell) continue;
+      break;
+    }
+    setFoodCell(nextFoodCell);
+  }
+
   return (
     <div className="board">
       {board.map((row, rowIndex) => (
@@ -115,7 +130,7 @@ const Board = () => {
               key={cellIndex}
               className={`cell ${
                 snakeCells.has(cellValue) ? 'snake-cell' : ''
-              }`}></div> //if snake cells have the cell value that we are at, then we also add the snake cell class making it green
+              } ${foodCell === cellValue ? 'food-cell' : ''}`}></div> //if snake cells have the cell value that we are at, then we also add the snake cell class making it green
            ))}
          </div>
       ))}

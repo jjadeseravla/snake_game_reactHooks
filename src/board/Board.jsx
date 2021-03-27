@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { randomIntFromInterval } from '../utils.js';
+import React, { useState, useEffect } from 'react';
+import {
+  randomIntFromInterval,
+  reverseLinkedList,
+  useInterval
+} from '../utils.js';
 import './Board.css';
 
 
@@ -18,16 +22,6 @@ class LinkedList {
   }
 }
 
-class Cell {
-  constructor(row, col, value) {
-    this.row = row;
-    this.col = col;
-    this.value = value;
-  }
-}
-
-const BOARD_SIZE = 10;
-
 const Direction = {
   "UP": "UP",
   "RIGHT": "RIGHT",
@@ -35,26 +29,62 @@ const Direction = {
   "LEFT": "LEFT",
 }
 
+const BOARD_SIZE = 15;
+const PROBABILITY_OF_DIRECTION_REVERSAL_FOOD = 0.3;
+
+const getStartingSnakeValue = (board) => {
+  const rowSize = board.length;
+  const colSize = board[0].length;
+  const startingRow = Math.round(rowSize/3);
+  const startingCol = Math.round(colSize/3);
+  const startingCell = board[startingRow][startingCol];
+  return {
+    row: startingRow,
+    col: startingCol,
+    cell: startingCell,
+  };
+};
+
 const Board = () => {
+  const [score, setScore] = useState(0);
   const [board, setBoard] = useState(createBoard(BOARD_SIZE));
-  const [foodCell, setFoodCell] = useState(48);
-  const [snakeCells, setSnakeCells] = useState(new Set([44])); // set will hold just nums that are snake body // 44 is value that gets passed to the node cos every snake cell should know where it currently is
-  const [snake, setSnake] = useState(new LinkedList(new Cell(4, 3, 44)));
+  const [snake, setSnake] = useState(
+    new LinkedList(getStartingSnakeValue(board)),
+  );
+  const [snakeCells, setSnakeCells] = useState(
+    new Set([snake.head.value.cell]),
+  );
+  const [foodCell, setFoodCell] = useState(snake.head.value.cell + 5);
   const [direction, setDirection] = useState(Direction.RIGHT);
-  const snakeCellsRef = useRef();
-  snakeCellsRef.current = new Set([44]);
+  const [foodShouldReverseDirection, setFoodShouldReverseDirection] = useState(
+    false,
+  );
 
   useEffect(() => {
-    setInterval(() => {
-      // moveSnake();
-    }, 1000)
     window.addEventListener('keydown', e => { //keydown to register arrow keys on keyboard
-      const newDirection = getDirectionFromKey(e.key);
-      const isValidDirection = newDirection !== ''; //valid direction eg not an empty string
-      if (isValidDirection) setDirection(newDirection);
+      handleKeyDown(e);
     })
   }, []);
 
+  // `useInterval` is needed; you can't naively do `setInterval` in the
+  // `useEffect` above. See the article linked above the `useInterval`
+  // definition for details.
+  useInterval(() => {
+    moveSnake();
+  }, 150);
+
+  const handleKeyDown = e => {
+    const newDirection = getDirectionFromKey(e.key);
+    const isValidDirection = newDirection !== '';
+    if (!isValidDirection) return;
+    const snakeWillRunIntoItself = getOppositeDirection(newDirection) === direction && snakeCells.size > 1;
+  // Note: this functionality is currently broken, for the same reason that
+  // `useInterval` is needed. Specifically, the `direction` and `snakeCells`
+  // will currently never reflect their "latest version" when `handleKeydown`
+  // is called.
+  if (snakeWillRunIntoItself) return;
+    setDirection(newDirection);
+  }
 
   const moveSnake = () => {
     // const currentHeadCoords = snake.head;
@@ -63,77 +93,126 @@ const Board = () => {
       col: snake.head.value.col,
     };
 
-    const nextHeadCoords = getNextSnakeHeadCoords(currentHeadCoords, direction);
-    const nextHeadValue = board[nextHeadCoords.row][nextHeadCoords.col]
+    const nextHeadCoords = getCoordsInDirection(currentHeadCoords, direction);
+    if (isOutOfBounds(nextHeadCoords, board)) {
+      handleGameOver()
+      return;
+    }
 
-    if (nextHeadValue === foodCell) handleFoodConsumption(); //if the next head value would be on the food (red sq same place as green) ---> then we eat food
+    const nextHeadCell = board[nextHeadCoords.row][nextHeadCoords.col]
+    if (snakeCells.has(nextHeadCell)) { //has() returns a boolean indicating whether an element with the specified key exists or not in map.  equivalent of includes() for array
+      handleGameOver();
+      return;
+    }
 
-    const newHead = new LinkedListNode(
-        new Cell(nextHeadCoords.row, nextHeadCoords.col, nextHeadValue),
-    );
+    const newHead = new LinkedListNode({
+      row: currentHeadCoords.row,
+      col: currentHeadCoords.col,
+      cell: nextHeadCell,
+    });
+
+    const currentHead = snake.head;
+    snake.head = newHead;
+    currentHead.next = newHead;
 
     const newSnakeCells = new Set(snakeCells);
     newSnakeCells.delete(snake.tail.value.value);
-    newSnakeCells.add(nextHeadValue);
+    newSnakeCells.add(nextHeadCell);
 
-    snake.head = newHead;
     snake.tail = snake.tail.next;
     if (snake.tail === null) {
       snake.tail = snake.head;
     }
+
+    const foodConsumed = nextHeadCell === foodCell;
+    if (foodConsumed) {
+      // This function mutates newSnakeCells.
+      growSnake(newSnakeCells);
+    if (foodShouldReverseDirection) {
+      reverseSnake();
+      handleFoodConsumption(); //if the next head value would be on the food (red sq same place as green) ---> then we eat food
+      }
+      setSnakeCells(newSnakeCells);
+    }
   };
 
-  const getNextSnakeHeadCoords = (currentHeadCoords, direction) => {
-    if (direction === Direction.UP) {
-      return {
-        row: currentHeadCoords.row -1,
-        col: currentHeadCoords.col,
-      }
+  // This function mutates newSnakeCells.
+  const growSnake = (newSnakeCells) => {
+    const growthNodeCoords = getGrowthNodeCoords(snake.tail, direction);
+    if (isOutOfBounds(growthNodeCoords, board)) {
+            // Snake is positioned such that it can't grow; don't do anything.
+      return;
     }
-    if (direction === Direction.RIGHT) {
-      return {
-        row: currentHeadCoords.row,
-        col: currentHeadCoords.col +1,
-      }
-    }
-    if (direction === Direction.DOWN) {
-      return {
-        row: currentHeadCoords.row +1,
-        col: currentHeadCoords.col,
-      }
-    }
-    if (direction === Direction.LEFT) {
-      return {
-        row: currentHeadCoords.row,
-        col: currentHeadCoords.col -1,
-      }
-    }
+    const newTailCell = board[growthNodeCoords.row][growthNodeCoords.col];
+    const newTail = new LinkedListNode({
+      row: growthNodeCoords.row,
+      col: growthNodeCoords.col,
+      cell: newTailCell
+    });
+    const currentTail = snake.tail;
+    snake.tail = newTail;
+    snake.tail.next = currentTail;
+
+    newSnakeCells.add(newTailCell);
   }
 
-  const handleFoodConsumption = () => { //this function just updates where the next food is going to be using the random function
+  const reverseSnake = () => {
+    const tailNextNodeDirection = getNextNodeDirection(snake.tail, direction);
+    const newDirection = getOppositeDirection(tailNextNodeDirection);
+    setDirection(newDirection);
+
+    // The tail of the snake is really the head of the linked list, which
+  // is why we have to pass the snake's tail to `reverseLinkedList`.
+    reverseLinkedList(snake.tail);
+    const snakeHead = snake.head;
+    snake.head = snake.tail;
+    snake.tail = snakeHead; //these 3 lines are swopping it all over
+  }
+
+  const handleFoodConsumption = (newSnakeCells) => { //this function just updates where the next food is going to be using the random function
     const maxPossibleCellValues = BOARD_SIZE * BOARD_SIZE;
     let nextFoodCell;
     while (true) {
-      const nextFoodCell = randomIntFromInterval(1, maxPossibleCellValues);
-      if (snakeCells.has(nextFoodCell) || foodCell === nextFoodCell) continue;
+      const nextFoodCell = randomIntFromInterval(1, maxPossibleCellValues); //pick a random number between 1 and the max cell value
+      if (snakeCells.has(nextFoodCell) || foodCell === nextFoodCell) {
+        continue; //while loop to keep generating random numbers until we find one that is not current food cell or snake cell
+      }
       break;
     }
+
+    const nextFoodShouldReverseDirection = Math.random() < PROBABILITY_OF_DIRECTION_REVERSAL_FOOD;
     setFoodCell(nextFoodCell);
+    setFoodShouldReverseDirection(nextFoodShouldReverseDirection);
+    setScore(score + 1);
+  }
+
+  const handleGameOver = () => {
+    setScore(0);
+    const snakeStartingValue = getStartingSnakeValue(board);
+    setSnake(new LinkedListNode(snakeStartingValue));
+    setFoodCell(snakeStartingValue.cell + 5);
+    setSnakeCells(new Set([snakeStartingValue.cell]));
+    setDirection(Direction.RIGHT);
   }
 
   return (
+    <div>
+    <h1>Score: {score}</h1>
     <div className="board">
       {board.map((row, rowIndex) => (
         <div key={rowIndex} className="row">
-          {row.map((cellValue, cellIndex) => (
-            <div
-              key={cellIndex}
-              className={`cell ${
-                snakeCells.has(cellValue) ? 'snake-cell' : ''
-              } ${foodCell === cellValue ? 'food-cell' : ''}`}></div> //if snake cells have the cell value that we are at, then we also add the snake cell class making it green
-           ))}
+          {row.map((cellValue, cellIndex) => {
+            const className = getCellClassName(
+              cellValue,
+              foodCell,
+              foodShouldReverseDirection,
+              snakeCells,
+            );
+            return <div key={cellIndex} className={className}></div>;
+            })}
          </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };
@@ -151,12 +230,104 @@ const createBoard = (BOARD_SIZE) => { // fills 2D arr with a counter so every ce
   return board;
 };
 
-const getDirectionFromKey = key => {
-  if (key === 'ArrowUp') return Direction.UP;
-  if (key === 'ArrowRight') return Direction.RIGHT;
-  if (key === 'ArrowDown') return Direction.DOWN;
-  if (key === 'ArrowLeft') return Direction.LEFT;
-  return ''; //return an empty string if key is not one of the 4 arrow keys
+  const getCoordsInDirection = (coords, direction) => {
+    if (direction === Direction.UP) {
+      return {
+        row: coords.row -1,
+        col: coords.col,
+      }
+    }
+    if (direction === Direction.RIGHT) {
+      return {
+        row: coords.row,
+        col: coords.col +1,
+      }
+    }
+    if (direction === Direction.DOWN) {
+      return {
+        row: coords.row +1,
+        col: coords.col,
+      }
+    }
+    if (direction === Direction.LEFT) {
+      return {
+        row: coords.row,
+        col: coords.col -1,
+      }
+    }
+  }
+
+  const isOutOfBounds = (coords, board) => {
+    const {row, col} = coords;
+    if (row < 0 || col < 0) return true;
+    if (row >= board.length || col >= board[0].length) return true;
+    return false;
+  }
+
+  const getDirectionFromKey = key => {
+    if (key === 'ArrowUp') return Direction.UP;
+    if (key === 'ArrowRight') return Direction.RIGHT;
+    if (key === 'ArrowDown') return Direction.DOWN;
+    if (key === 'ArrowLeft') return Direction.LEFT;
+    return ''; //return an empty string if key is not one of the 4 arrow keys
+  }
+
+  const getNextNodeDirection = (node, currentDirection) => {
+    if (node.next === null) return currentDirection;
+    const {row: currentRow, col: currentCol} = node.value;
+    const {row: nextRow, col: nextCol} = node.next.value;
+    if (nextRow === currentRow && nextCol === currentCol + 1) {
+      return Direction.RIGHT;
+    }
+    if (nextRow === currentRow && nextCol === currentCol - 1) {
+      return Direction.LEFT;
+    }
+    if (nextCol === currentCol && nextRow === currentRow + 1) {
+      return Direction.DOWN;
+    }
+    if (nextCol === currentCol && nextRow === currentRow - 1) {
+      return Direction.UP;
+    }
+    return '';
+  };
+
+  const getGrowthNodeCoords = (snakeTail, currentDirection) => {
+    const tailNextNodeDirection = getNextNodeDirection (
+      snakeTail,
+      currentDirection,
+    );
+    const growthDirection = getOppositeDirection(tailNextNodeDirection);
+    const currentTailCoords = {
+      row: snakeTail.value.row,
+      col: snakeTail.value.col,
+    };
+    const growthNodeCoords = getCoordsInDirection(
+      currentTailCoords,
+      growthDirection
+    );
+    return growthNodeCoords;
+  }
+
+  const getOppositeDirection = direction => {
+    if (direction === Direction.UP) return Direction.DOWN;
+    if (direction === Direction.RIGHT) return Direction.LEFT;
+    if (direction === Direction.DOWN) return Direction.UP;
+    if (direction === Direction.LEFT) return Direction.RIGHT;
+  };
+
+const getCellClassName = (cellValue, foodCell, foodShouldReverseDirection, snakeCells) => {
+  let className = 'cell';
+  if (cellValue === foodCell) {
+    if (foodShouldReverseDirection) {
+      className = 'cell cell-purple';
+    } else {
+      className = 'cell cell-red';
+    }
+  }
+  if (snakeCells.has(cellValue)) {
+    className = 'cell cell-green'
+  }
+  return className;
 }
 
 export default Board;

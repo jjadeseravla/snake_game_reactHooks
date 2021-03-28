@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+
 import {
   randomIntFromInterval,
   reverseLinkedList,
@@ -62,6 +63,7 @@ const Board = () => {
 
   useEffect(() => {
     window.addEventListener('keydown', e => { //keydown to register arrow keys on keyboard
+      console.log('1st useEffect');
       handleKeyDown(e);
     })
   }, []);
@@ -71,9 +73,10 @@ const Board = () => {
   // definition for details.
   useInterval(() => {
     moveSnake();
-  }, 150);
+  }, 10000);
 
   const handleKeyDown = e => {
+    console.log('handleKeyDown');
     const newDirection = getDirectionFromKey(e.key);
     const isValidDirection = newDirection !== '';
     if (!isValidDirection) return;
@@ -100,7 +103,7 @@ const Board = () => {
     }
 
     const nextHeadCell = board[nextHeadCoords.row][nextHeadCoords.col]
-    if (snakeCells.has(nextHeadCell)) { //has() returns a boolean indicating whether an element with the specified key exists or not in map.  equivalent of includes() for array
+    if (!snakeCells.has(nextHeadCell)) { //has() returns a boolean indicating whether an element with the specified key exists or not in map.  equivalent of includes() for array
       handleGameOver();
       return;
     }
@@ -128,12 +131,12 @@ const Board = () => {
     if (foodConsumed) {
       // This function mutates newSnakeCells.
       growSnake(newSnakeCells);
-    if (foodShouldReverseDirection) {
-      reverseSnake();
-      handleFoodConsumption(); //if the next head value would be on the food (red sq same place as green) ---> then we eat food
+      if (foodShouldReverseDirection) {
+        reverseSnake();
       }
-      setSnakeCells(newSnakeCells);
+      handleFoodConsumption(); //if the next head value would be on the food (red sq same place as green) ---> then we eat food
     }
+    setSnakeCells(newSnakeCells);
   };
 
   // This function mutates newSnakeCells.
@@ -187,6 +190,7 @@ const Board = () => {
   }
 
   const handleGameOver = () => {
+    console.log('handleGameOver');
     setScore(0);
     const snakeStartingValue = getStartingSnakeValue(board);
     setSnake(new LinkedListNode(snakeStartingValue));
@@ -265,6 +269,7 @@ const createBoard = (BOARD_SIZE) => { // fills 2D arr with a counter so every ce
   }
 
   const getDirectionFromKey = key => {
+    console.log("getDirectionFromKey");
     if (key === 'ArrowUp') return Direction.UP;
     if (key === 'ArrowRight') return Direction.RIGHT;
     if (key === 'ArrowDown') return Direction.DOWN;
